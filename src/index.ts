@@ -55,7 +55,11 @@ interface FeedItem {
     date: Date;
 }
 
-const usage = `Usage: /{instance_url}/{access_token}`
+const usage = `
+Usage: /{instance_url}/{access_token} 
+eg. /mastodon/mastodon.social/1234567890abcdef
+Currently only Mastodon / Mastodon-compatible platforms (gotosocial etc.) are supported.
+`;
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -66,8 +70,16 @@ export default {
         }
 
         const [instance_url, access_token] = url.pathname.split('/').slice(1);
+        // Return 404 if instance_url or access_token is missing
+        if (!instance_url || !access_token) {
+            return new Response('Not Found', { status: 404 });
+        }
         const endpoint = `https://${instance_url}/api/v1/timelines/home`;
-        const headers = { 'Authorization': `Bearer ${access_token}` };
+        const headers = { 
+            'Authorization': `Bearer ${access_token}`,
+            'User-Agent': 'Fedi Timeline RSS Worker',
+            'Accept': 'application/json',
+        };
 
         const response = await fetch(endpoint, { headers });
         if (!response.ok) {
@@ -98,7 +110,11 @@ export default {
 
 async function getStatus(instance_url: string, access_token: string, id: string): Promise<Status> {
     const endpoint = `https://${instance_url}/api/v1/statuses/${id}`;
-    const headers = { 'Authorization': `Bearer ${access_token}` };
+    const headers = { 
+        'Authorization': `Bearer ${access_token}`,
+        'User-Agent': 'Fedi Timeline RSS Worker',
+        'Accept': 'application/json',
+    };
 
     const response = await fetch(endpoint, { headers });
     if (!response.ok) {
