@@ -55,9 +55,16 @@ interface FeedItem {
     date: Date;
 }
 
+const usage = `Usage: /{instance_url}/{access_token}`
+
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
         const url = new URL(request.url);
+
+        if (url.pathname === '/') {
+            return new Response(usage, { status: 200 });
+        }
+
         const [instance_url, access_token] = url.pathname.split('/').slice(1);
         const endpoint = `https://${instance_url}/api/v1/timelines/home`;
         const headers = { 'Authorization': `Bearer ${access_token}` };
