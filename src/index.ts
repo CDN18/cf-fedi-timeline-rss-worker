@@ -58,7 +58,10 @@ interface FeedItem {
 const usage = `
 Usage: /{instance_url}/{access_token} 
 eg. /mastodon/mastodon.social/1234567890abcdef
-Currently only Mastodon / Mastodon-API-compatible platforms (gotosocial etc.) are supported.
+
+Note:
+1. Currently only Mastodon / Mastodon-API-compatible platforms (gotosocial etc.) are supported.
+2. An access_token is a credential for accessing your account. Any entity possessing the access_token can request the corresponding API in your name. It is strongly recommended that you deploy this project yourself, regularly check the usage of your account, and rotate your access_token periodically.
 `;
 
 export default {
