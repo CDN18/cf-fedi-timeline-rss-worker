@@ -8,7 +8,8 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-import { Feed } from 'feed';
+import { handleMastodonRequest } from './mastodon';
+import { handleMisskeyRequest } from './misskey';
 
 export interface Env {
 	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
@@ -59,14 +60,31 @@ interface Account {
 	acct: string;
 }
 
+const mastodonCompatibleSoftware = ['mastodon', 'gotosocial', 'pleroma', 'akkoma', 'hometown'];
+const misskeyCompatibleSoftware = ['misskey', 'firefish', 'iceshrimp', 'sharkey', 'catodon', 'foundkey'];
+
 const usage = `
-Usage: /{instance_url}/{access_token} 
-eg. /mastodon.social/1234567890abcdef
+使用方法: /{software}/{instance_url}/{access_token} 
+或: /{instance_url}/{access_token}
+
+例如: /mastodon/mastodon.social/1234567890abcdef
+或: /mastodon.social/1234567890abcdef
+
+注意:
+1. 目前支持 Mastodon API 兼容的平台 (${mastodonCompatibleSoftware.join(', ')} 等) 和 Misskey API 兼容的平台 (${misskeyCompatibleSoftware.join(', ')} 等)。
+2. access_token 是访问您账户的凭证。拥有 access_token 的任何实体都可以以您的名义请求相应的 API。强烈建议您自行部署此项目，定期检查您的账户使用情况，并定期轮换您的 access_token。
+
+Usage: /{software}/{instance_url}/{access_token} 
+or: /{instance_url}/{access_token}
+
+Example: /mastodon/mastodon.social/1234567890abcdef
+or: /mastodon.social/1234567890abcdef
 
 Note:
-1. Currently only Mastodon / Mastodon-API-compatible platforms (gotosocial etc.) are supported.
-2. An access_token is a credential for accessing your account. Any entity possessing the access_token can request the corresponding API in your name. It is strongly recommended that you deploy this project yourself, regularly check the usage of your account, and rotate your access_token periodically.
+1. Currently supports platforms compatible with Mastodon API (${mastodonCompatibleSoftware.join(', ')} etc.) and Misskey API (${misskeyCompatibleSoftware.join(', ')} etc.).
+2. The access_token is the credential for accessing your account. Any entity with the access_token can request the corresponding API on your behalf. It is strongly recommended that you deploy this project yourself, regularly check your account usage, and rotate your access_token periodically.
 `;
+
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -76,135 +94,45 @@ export default {
             return new Response(usage, { status: 200 });
         }
 
-        const [instance_url, access_token] = url.pathname.split('/').slice(1);
-        // Return 404 if instance_url or access_token is missing
-        if (!instance_url || !access_token) {
-            return new Response('Not Found', { status: 404 });
-        }
-        const endpoint = `https://${instance_url}/api/v1/timelines/home`;
-        const headers = { 
-            'Authorization': `Bearer ${access_token}`,
-            'User-Agent': 'Fedi Timeline RSS Worker',
-            'Accept': 'application/json',
-        };
+        const pathParts = url.pathname.split('/').filter(Boolean);
+        let software: string | null = null;
+        let instance_url: string;
+        let access_token: string;
 
-        // Get account info
-        const accountResponse = await fetch(`https://${instance_url}/api/v1/accounts/verify_credentials`, { headers });
-        let account = instance_url;
-        if (accountResponse.ok) {
-            const accountInfo: Account = await accountResponse.json();
-            account = accountInfo.acct;
-            if (!account.includes('@')) {
-                account = `${account}@${instance_url}`;
-            }
+        if (pathParts.length === 3) {
+            [software, instance_url, access_token] = pathParts;
+        } else if (pathParts.length === 2) {
+            [instance_url, access_token] = pathParts;
+        } else {
+            return new Response('Invalid request path', { status: 400 });
         }
 
-        const response = await fetch(endpoint, { headers });
-        if (!response.ok) {
-            return new Response(response.statusText, { status: response.status });
+        if (!software) {
+            software = await detectSoftware(instance_url);
         }
 
-        const statuses = await response.json() as Status[];
-        const feed = new Feed({
-            title: `${account}'s timeline`,
-            id: instance_url,
-            link: instance_url,
-            updated: new Date(),
-            generator: 'Fedi Timeline RSS Worker',
-			copyright: 'Powered by Fedi Timeline RSS Worker, created by Owu One. All rights reserved to the original author of the statuses in this feed.',
-        });
-
-        for (const status of statuses) {
-            const item = await statusToItem(status, instance_url, access_token);
-            feed.addItem(item);
+        const lowerSoftware = software.toLowerCase();
+        if (mastodonCompatibleSoftware.includes(lowerSoftware)) {
+            return handleMastodonRequest(instance_url, access_token, env, ctx);
+        } else if (misskeyCompatibleSoftware.includes(lowerSoftware)) {
+            return handleMisskeyRequest(instance_url, access_token, env, ctx);
+        } else {
+            // this should never happen
+            return new Response('Unsupported software type', { status: 400 });
         }
-        feed.items.sort((a, b) => b.date.getTime() - a.date.getTime());
-
-        return new Response(feed.rss2(), {
-            headers: { 'Content-Type': 'application/rss+xml' },
-        });
     },
 };
 
-async function getStatus(instance_url: string, access_token: string, id: string): Promise<Status> {
-    const endpoint = `https://${instance_url}/api/v1/statuses/${id}`;
-    const headers = { 
-        'Authorization': `Bearer ${access_token}`,
-        'User-Agent': 'Fedi Timeline RSS Worker',
-        'Accept': 'application/json',
-    };
-
-    const response = await fetch(endpoint, { headers });
-    if (!response.ok) {
-        return {} as Status;
+async function detectSoftware(instance_url: string): Promise<string> {
+    try {
+        const response = await fetch(`https://${instance_url}/nodeinfo/2.0`);
+        if (!response.ok) {
+            return 'mastodon'; // default to Mastodon
+        }
+        const nodeInfo = await response.json() as { software?: { name?: string } };
+        return nodeInfo.software?.name?.toLowerCase() || 'mastodon';
+    } catch (error) {
+        console.error('Failed to get nodeinfo:', error);
+        return 'mastodon'; // default to Mastodon
     }
-
-    return await response.json() as Status;
-}
-
-function getName(status: Status): string {
-    if (status.account.display_name) {
-        return status.account.display_name;
-    } else if (status.account.acct) {
-        return status.account.acct;
-    } else {
-        return 'UNKNOWN';
-    }
-}
-
-function statusToItem(status: Status, instance_url: string, access_token: string): Promise<FeedItem> {
-    return new Promise(async (resolve, reject) => {
-        let content = status.content;
-        let actualStatus = status;
-
-        // Reblog check
-        if (status.reblog) {
-            actualStatus = status.reblog;
-            const name = getName(actualStatus);
-            content = `<p>RT ${name}</p>${actualStatus.content}`;
-        }
-
-        // Spoiler check
-        if (actualStatus.spoiler_text) {
-            content = `<p><strong>Spoiler: ${actualStatus.spoiler_text}</strong></p>${content}`;
-        }
-
-        // Reply check
-        if (actualStatus.in_reply_to_id) {
-            const repliedStatus = await getStatus(instance_url, access_token, actualStatus.in_reply_to_id);
-            const name = getName(repliedStatus);
-            if (repliedStatus.account) {
-                content = `<p>Reply to ${name}:</p>${content}`;
-            }
-        }
-
-        // Add media attachments
-        if (actualStatus.media_attachments && actualStatus.media_attachments.length > 0) {
-            for (const media of actualStatus.media_attachments) {
-                content += '<br>';
-                switch (media.type) {
-                    case 'image':
-                        content += `<img src="${media.url}" alt="Image attachment">`;
-                        break;
-                    case 'video':
-                        content += `<video src="${media.url}" controls>Video attachment</video>`;
-                        break;
-                    case 'gifv':
-                        content += `<video src="${media.url}" autoplay loop muted playsinline>Video attachment</video>`;
-                        break;
-                    case 'audio':
-                        content += `<audio src="${media.url}" controls>Audio attachment</audio>`;
-                        break;
-                }
-            }
-        }
-
-        resolve({
-            title: getName(status),
-            id: status.id,
-            link: status.url,
-            content: content,
-            date: new Date(status.created_at),
-        });
-    });
 }
