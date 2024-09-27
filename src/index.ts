@@ -55,6 +55,10 @@ interface FeedItem {
     date: Date;
 }
 
+interface Account {
+	acct: string;
+}
+
 const usage = `
 Usage: /{instance_url}/{access_token} 
 eg. /mastodon.social/1234567890abcdef
@@ -84,6 +88,17 @@ export default {
             'Accept': 'application/json',
         };
 
+        // Get account info
+        const accountResponse = await fetch(`https://${instance_url}/api/v1/accounts/verify_credentials`, { headers });
+        let account = instance_url;
+        if (accountResponse.ok) {
+            const accountInfo: Account = await accountResponse.json();
+            account = accountInfo.acct;
+            if (!account.includes('@')) {
+                account = `${account}@${instance_url}`;
+            }
+        }
+
         const response = await fetch(endpoint, { headers });
         if (!response.ok) {
             return new Response(response.statusText, { status: response.status });
@@ -91,7 +106,7 @@ export default {
 
         const statuses = await response.json() as Status[];
         const feed = new Feed({
-            title: `${instance_url} timeline`,
+            title: `${account}'s timeline`,
             id: instance_url,
             link: instance_url,
             updated: new Date(),
