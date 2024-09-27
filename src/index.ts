@@ -57,7 +57,7 @@ interface FeedItem {
 
 const usage = `
 Usage: /{instance_url}/{access_token} 
-eg. /mastodon/mastodon.social/1234567890abcdef
+eg. /mastodon.social/1234567890abcdef
 
 Note:
 1. Currently only Mastodon / Mastodon-API-compatible platforms (gotosocial etc.) are supported.
