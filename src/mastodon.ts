@@ -60,8 +60,8 @@ export async function handleMastodonRequest(instance_url: string, access_token: 
     const statuses = await response.json() as Status[];
     const feed = new Feed({
         title: `${account}'s Timeline`,
-        id: instance_url,
-        link: instance_url,
+        id: instance_url + `-` +  access_token.slice(-4),
+        link: `https://${instance_url}/@${account.split('@')[0]}`,
         updated: new Date(),
         generator: 'Fedi Timeline RSS Worker',
         copyright: 'Powered by Fedi Timeline RSS Worker, created by Owu One. All rights of the statuses in this feed belong to the original authors.',
@@ -145,7 +145,7 @@ function statusToItem(status: Status, instance_url: string, access_token: string
                         content += `<video src="${media.url}" autoplay loop muted playsinline>Gif Attachment</video>`;
                         break;
                     case 'audio':
-                        content += `<audio src="${media.url}" controls>Audio Attachment</audio>`;
+                        content += `<audio src="${media.url}" controls>音频附件</audio>`;
                         break;
                 }
             }
