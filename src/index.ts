@@ -73,6 +73,7 @@ const usage = `
 注意:
 1. 目前支持 Mastodon API 兼容的平台 (${mastodonCompatibleSoftware.join(', ')} 等) 和 Misskey API 兼容的平台 (${misskeyCompatibleSoftware.join(', ')} 等)。
 2. access_token 是访问您账户的凭证。拥有 access_token 的任何实体都可以以您的名义请求相应的 API。强烈建议您自行部署此项目，定期检查您的账户使用情况，并定期轮换您的 access_token。
+3. 你的RSS链接包含了你的access_token，因此切勿向他人分享你的RSS链接，使用RSS阅读应用时，要确保应用不会公开你的RSS订阅链接。
 
 Usage: /{software}/{instance_url}/{access_token} 
 or: /{instance_url}/{access_token}
@@ -83,8 +84,8 @@ or: /mastodon.social/1234567890abcdef
 Note:
 1. Currently supports platforms compatible with Mastodon API (${mastodonCompatibleSoftware.join(', ')} etc.) and Misskey API (${misskeyCompatibleSoftware.join(', ')} etc.).
 2. The access_token is the credential for accessing your account. Any entity with the access_token can request the corresponding API on your behalf. It is strongly recommended that you deploy this project yourself, regularly check your account usage, and rotate your access_token periodically.
+3. Your RSS link contains your access_token, so do not share your RSS link with others. When using RSS reading applications, ensure that the application does not publicly disclose your RSS subscription link.
 `;
-
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
